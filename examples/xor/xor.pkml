@@ -1,0 +1,22 @@
+modules = {
+    "../modules/fully_connected.pkmlm"
+
+    "../modules/sigmoid.pkmlm"
+};
+
+network = {
+    classname = InstanceXor;
+    learning_rate = 0.5;
+    numerical_type = float;
+
+    layers = {
+        FullyConnected = {
+            input_dimension  = (2);
+            output_dimension = (2);
+        };
+        Sigmoid = {
+            input_dimension  = (2);
+            output_dimension = (2);
+        };
+    };
+};

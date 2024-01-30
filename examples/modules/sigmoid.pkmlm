@@ -1,0 +1,6 @@
+module = {
+    name = Sigmoid;
+
+    activate_function = sigmoid_activate;
+    learn_function    = sigmoid_learn;
+};
