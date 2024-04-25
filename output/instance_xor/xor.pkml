@@ -1,0 +1,50 @@
+{
+    "modules": [
+        "modules/fully_connected.pkmlm",
+
+        "modules/sigmoid.pkmlm"
+    ],
+    "network": {
+        "class_name": "InstanceXor",
+        "float_type": "float",
+
+        "grid_dim": 1,
+        "block_dim": 100,
+
+        "layers": [
+            {
+                "module_name": "FullyConnected",
+                "input_dimension":  [ 2 ],
+                "output_dimension": [ 2 ],
+                "params": { "learning_rate": 0.1 }
+            },
+            {
+                "module_name": "Sigmoid",
+                "input_dimension":  [ 2 ],
+                "output_dimension": [ 2 ]
+            },
+            {
+                "module_name": "FullyConnected",
+                "input_dimension":  [ 2 ],
+                "output_dimension": [ 2 ],
+                "params": { "learning_rate": 0.1 }
+            },
+            {
+                "module_name": "Sigmoid",
+                "input_dimension":  [ 2 ],
+                "output_dimension": [ 2 ]
+            },
+            {
+                "module_name": "FullyConnected",
+                "input_dimension":  [ 2 ],
+                "output_dimension": [ 2 ],
+                "params": { "learning_rate": 0.1 }
+            },
+            {
+                "module_name": "Sigmoid",
+                "input_dimension":  [ 2 ],
+                "output_dimension": [ 2 ]
+            }
+        ]
+    }
+}

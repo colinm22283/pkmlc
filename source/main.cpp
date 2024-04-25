@@ -11,7 +11,7 @@ int main(int argc, char ** argv) {
 
     Parser input_parser(CLI::Options::input_file.c_str());
 
-
+    input_parser.write_output("output.cu", "output.hpp");
 
     return 0;
 }
