@@ -7,7 +7,7 @@
 int main(int argc, char ** argv) {
     CLI::Parser::parse(argc, argv);
 
-    CLI::Options::input_file = "xor.pkml";
+    CLI::Options::input_file = argv[1];
 
     Parser input_parser(CLI::Options::input_file.c_str());
 

@@ -149,13 +149,44 @@ public:
             stream << "l" << layer << "_t";
         };
 
+        auto print_thread_gate_open = [this, print_buf_name, print_layer_alloc_name, print_layer_size_name](auto & stream, std::size_t size) {
+            auto print_lambda_capture = [this, print_buf_name, print_layer_alloc_name](auto & stream) {
+                stream << "thread_index, ";
+                for (std::size_t j = 0; j < layers.size() + 1; j++) {
+                    stream << "_";
+                    print_buf_name(stream, j);
+                    stream << ", ";
+                }
+                for (std::size_t j = 0; j < layers.size() - 1; j++) {
+                    stream << "_";
+                    print_layer_alloc_name(stream, j);
+                    stream << ", ";
+                }
+                stream << "_";
+                print_layer_alloc_name(stream, layers.size() - 1);
+            };
+
+            stream << "PKML::thread_gate<total_threads, ";
+            print_layer_size_name(stream, size + 1);
+            stream << "::element_product>(thread_index, [";
+            print_lambda_capture(stream);
+            stream << "]() {\n";
+        };
+
+        auto compare_dimensions = [](std::vector<std::size_t> & a, std::vector<std::size_t> & b) {
+            if (a.size() != b.size()) return false;
+
+            for (std::size_t i = 0; i < a.size(); i++) if (a[i] != b[i]) return false;
+
+            return true;
+        };
+
         hfs << "#pragma once\n"
                "#include <cstdint>\n"
                "namespace PKML{using float_t="
             << float_type
             << ";}\n"
-               "#include \"../include/pkml.hpp\"\n"
-//               "#include <cuda_fp16.h>\n"
+               "#include <pkml.hpp>\n"
                "namespace "
             << class_name
             << "{"
@@ -166,7 +197,7 @@ public:
             hfs << " = PKML::Dimension<";
             for (std::size_t j = 0; j < layers[i].input_dimension.size() - 1; j++) {
                 hfs << layers[i].input_dimension[j];
-                std::cout << ", ";
+                hfs << ", ";
             }
             hfs << layers[i].input_dimension[layers[i].input_dimension.size() - 1];
             hfs << ">;";
@@ -176,7 +207,7 @@ public:
         hfs << " = PKML::Dimension<";
         for (std::size_t i = 0; i < layers[layers.size() - 1].input_dimension.size() - 1; i++) {
             hfs << layers[layers.size() - 1].input_dimension[i];
-            std::cout << ", ";
+            hfs << ", ";
         }
         hfs << layers[layers.size() - 1].input_dimension[layers[layers.size() - 1].input_dimension.size() - 1];
         hfs << ">;";
@@ -186,17 +217,23 @@ public:
               "public:"
               "Network();"
               "~Network();"
-              "void train(std::size_t iterations, "
+              "void forward();"
+              "void train(std::size_t iterations, std::size_t mult, "
             << class_name
             << "::Dataset & dataset);"
-              "void copy_outputs(PKML::float_t * dst);"
-              "void copy_inputs(PKML::float_t * src);"
-              "};"
-              "class Dataset {"
-              "friend class " << class_name << "::Network;"
-              "public:"
-              "struct TrainingSet {"
-              "PKML::float_t inputs[" << class_name << "::_LayerSizes::";
+               "PKML::float_t evaluate("
+            << class_name
+            << "::Dataset & dataset);"
+               "void save(const char * path);"
+               "void load(const char * path);"
+               "void copy_outputs(PKML::float_t * dst);"
+               "void copy_inputs(PKML::float_t * src);"
+               "};"
+               "class Dataset {"
+               "friend class " << class_name << "::Network;"
+               "public:"
+               "struct TrainingSet {"
+               "PKML::float_t inputs[" << class_name << "::_LayerSizes::";
         print_layer_size_name(hfs, 0);
         hfs << "::element_product];"
                "PKML::float_t outputs[" << class_name << "::_LayerSizes::";
@@ -212,11 +249,23 @@ public:
 
                "void push_back(const TrainingSet & value);"
                "inline void push_back(const TrainingSet && value) { push_back((TrainingSet &) value); }"
+               "inline void copy_back(PKML::float_t * inputs, PKML::float_t * outputs) {"
+               "TrainingSet temp;"
+               "for (std::size_t i = 0; i < " << class_name << "::_LayerSizes::";
+        print_layer_size_name(hfs, 0);
+        hfs << "::element_product; i++) temp.inputs[i] = inputs[i];"
+               "for (std::size_t i = 0; i < " << class_name << "::_LayerSizes::";
+        print_layer_size_name(hfs, layers.size());
+        hfs << "::element_product; i++) temp.outputs[i] = outputs[i];"
+               "push_back(temp);"
+               "}"
+               "void pull_set(std::size_t index, TrainingSet & set) const;"
                "[[nodiscard]] inline std::size_t size() const noexcept { return _size; }"
                "[[nodiscard]] inline std::size_t capacity() const noexcept { return _capacity; }"
                "};"
                "}";
 
+        sfs << "#include <fstream>\n";
         sfs << "#include \"output.hpp\"\n";
         for (module_t & module : modules) {
             sfs << "#include \"" << module.class_path << "\"\n";
@@ -336,53 +385,23 @@ public:
         }
         sfs << "}\n\n";
 
+        // forward_d start
         sfs << "template<std::size_t total_threads>\n"
-            << "__device__ void propogate_d(\n"
+            << "__device__ void forward_d(\n"
             << "const std::size_t thread_index,\n";
         for (std::size_t i = 0; i < layers.size() + 1; i++) {
             sfs << "PKML::float_t * const _";
             print_buf_name(sfs, i);
             sfs << ",\n";
         }
-        for (std::size_t i = 0; i < layers.size(); i++) {
+        for (std::size_t i = 0; i < layers.size() - 1; i++) {
             sfs << "PKML::float_t * const _";
             print_layer_alloc_name(sfs, i);
             sfs << ",\n";
         }
-        sfs << "const PKML::float_t * const correct\n"
-            << ") {\n";
-
-        auto print_thread_gate_open = [this, print_buf_name, print_layer_alloc_name, print_layer_size_name](auto & stream, std::size_t size) {
-            auto print_lambda_capture = [this, print_buf_name, print_layer_alloc_name](auto & stream) {
-                stream << "thread_index, ";
-                for (std::size_t j = 0; j < layers.size() + 1; j++) {
-                    stream << "_";
-                    print_buf_name(stream, j);
-                    stream << ", ";
-                }
-                for (std::size_t j = 0; j < layers.size() - 1; j++) {
-                    stream << "_";
-                    print_layer_alloc_name(stream, j);
-                    stream << ", ";
-                }
-                stream << "_";
-                print_layer_alloc_name(stream, layers.size() - 1);
-            };
-
-            stream << "PKML::thread_gate<total_threads, ";
-            print_layer_size_name(stream, size);
-            stream << "::element_product>(thread_index, [";
-            print_lambda_capture(stream);
-            stream << "]() {\n";
-        };
-
-        auto compare_dimensions = [](std::vector<std::size_t> & a, std::vector<std::size_t> & b) {
-            if (a.size() != b.size()) return false;
-
-            for (std::size_t i = 0; i < a.size(); i++) if (a[i] != b[i]) return false;
-
-            return true;
-        };
+        sfs << "PKML::float_t * const _";
+        print_layer_alloc_name(sfs, layers.size() - 1);
+        sfs << ") {\n";
 
         {
             bool is_first_layer = true;
@@ -392,6 +411,7 @@ public:
                 if (!compare_dimensions(layers[i].output_dimension_nums, prev_layer_size) || layers[i].module.gated) {
                     if (!is_first_layer) {
                         sfs << "});\n";
+                        if (layers[i].module.gated) sfs << "__syncthreads();\n";
                     }
                     else is_first_layer = false;
 
@@ -421,13 +441,16 @@ public:
                 }
             }
 
-            sfs << "});\n";
+            sfs << "});\n"
+                << "__syncthreads();\n";
         }
         sfs << "}\n\n";
+        // forward_d end
 
+        // propogate_d start
         sfs << "template<std::size_t total_threads>\n"
-            << "__global__ void train_k(\n"
-            << "std::size_t iterations,\n";
+            << "__device__ void propogate_d(\n"
+            << "const std::size_t thread_index,\n";
         for (std::size_t i = 0; i < layers.size() + 1; i++) {
             sfs << "PKML::float_t * const _";
             print_buf_name(sfs, i);
@@ -438,12 +461,180 @@ public:
             print_layer_alloc_name(sfs, i);
             sfs << ",\n";
         }
-        sfs << "const InstanceXor::Dataset::TrainingSet * const dataset,\n"
+        sfs << "const PKML::float_t * const correct\n"
+            << ") {\n"
+            << "forward_d<total_threads>(\n"
+            << "thread_index,\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            sfs << "_";
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size() - 1; i++) {
+            sfs << "_";
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "_";
+        print_layer_alloc_name(sfs, layers.size() - 1);
+        sfs << ");\n";
+
+        {
+            auto print_backward_thread_gate_open = [this, print_buf_name, print_layer_alloc_name, print_layer_size_name](auto & stream, std::size_t size) {
+                auto print_lambda_capture = [this, print_buf_name, print_layer_alloc_name](auto & stream) {
+                    stream << "thread_index, intermediate_costs_ptr, ";
+                    for (std::size_t j = 0; j < layers.size() + 1; j++) {
+                        stream << "_";
+                        print_buf_name(stream, j);
+                        stream << ", ";
+                    }
+                    for (std::size_t j = 0; j < layers.size() - 1; j++) {
+                        stream << "_";
+                        print_layer_alloc_name(stream, j);
+                        stream << ", ";
+                    }
+                    stream << "_";
+                    print_layer_alloc_name(stream, layers.size() - 1);
+                };
+
+                stream << "PKML::thread_gate<total_threads, ";
+                print_layer_size_name(stream, size + 1);
+                stream << "::element_product>(thread_index, [";
+                print_lambda_capture(stream);
+                stream << "]() {\n";
+            };
+
+            sfs << "__shared__ PKML::float_t intermediate_costs[total_threads];\n"
+                << "PKML::float_t * intermediate_costs_ptr = intermediate_costs;\n";
+
+            sfs << "PKML::thread_gate<total_threads, ";
+            print_layer_size_name(sfs, layers.size());
+            sfs << "::element_product>(thread_index, [thread_index, intermediate_costs_ptr, correct, _";
+            print_buf_name(sfs, layers.size());
+            sfs << "]() {\n"
+                << "intermediate_costs_ptr[thread_index] = PKML::Math::sub(_";
+            print_buf_name(sfs, layers.size());
+            sfs << "[thread_index], correct[thread_index]);\n"
+                << "});\n";
+
+            print_backward_thread_gate_open(sfs, layers.size() - 1);
+            sfs << "PKML::float_t intermediate = intermediate_costs_ptr[thread_index];\n";
+            for (long i = (long) layers.size() - 1; i >= 0; i--) {
+                if (layers[i].module.gated) {
+                    print_layer_type(sfs, i);
+                    sfs << "::backward_gated(thread_index, intermediate_costs_ptr, _";
+                    print_buf_name(sfs, i);
+                    sfs << ", intermediate, _";
+                    print_layer_alloc_name(sfs, i);
+                    sfs << ");\n";
+
+                    sfs << "});\n"
+                        << "__syncthreads();\n";
+
+                    if (i != 0) {
+                        print_backward_thread_gate_open(sfs, i - 1);
+                        sfs << "PKML::float_t intermediate = intermediate_costs_ptr[thread_index];\n";
+                    }
+                }
+                else {
+                    sfs << "intermediate = PKML::Math::mul(intermediate, ";
+                    print_layer_type(sfs, i);
+                    sfs << "::backward_ungated(_";
+                    print_buf_name(sfs, i);
+                    sfs << "[thread_index], _";
+                    print_buf_name(sfs, i + 1);
+                    sfs << "[thread_index], _";
+                    print_layer_alloc_name(sfs, i);
+                    sfs << "));\n";
+                }
+            }
+        }
+
+        sfs << "}\n\n";
+        // propogate_d end
+
+        // forward_k start
+        sfs << "template<std::size_t total_threads>\n"
+            << "__global__ void forward_k(\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            sfs << "PKML::float_t * const _";
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size() - 1; i++) {
+            sfs << "PKML::float_t * const _";
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "PKML::float_t * const _";
+        print_layer_alloc_name(sfs, layers.size() - 1);
+        sfs << ") {\n"
+            << "const std::size_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;\n"
+            << "forward_d<total_threads>(\n"
+            << "thread_index,\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            sfs << "_";
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size() - 1; i++) {
+            sfs << "_";
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "_";
+        print_layer_alloc_name(sfs, layers.size() - 1);
+        sfs << ");\n"
+            << "}\n\n";
+        // forward_k end
+
+        // forward start
+        sfs << "void "
+            << class_name
+            << "::Network::forward() {\n"
+            << "forward_k<"
+            << grid_dim
+            << " * "
+            << block_dim
+            << "><<<"
+            << grid_dim
+            << ", "
+            << block_dim
+            << ">>>(\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size() - 1; i++) {
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+
+        print_layer_alloc_name(sfs, layers.size() - 1);
+        sfs << ");\n"
+            << "}\n\n";
+        // forward end
+
+        sfs << "template<std::size_t total_threads>\n"
+            << "__global__ void train_k(\n"
+            << "std::size_t iterations,\n"
+            << "std::size_t mult,\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            sfs << "PKML::float_t * const _";
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size(); i++) {
+            sfs << "PKML::float_t * const _";
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "const " << class_name << "::Dataset::TrainingSet * const dataset,\n"
             << "const std::size_t dataset_size\n"
             << ") {\n"
             << "const std::size_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;\n"
             << "for (std::size_t i = 0; i < iterations; i++) {\n"
-            << "const " << class_name << "::Dataset::TrainingSet & training_set = dataset[i % dataset_size];\n"
+            << "const " << class_name << "::Dataset::TrainingSet & training_set = dataset[(i * mult) % dataset_size];\n"
             << "PKML::thread_gate<total_threads, l0_size::element_product>(thread_index, [thread_index, training_set, _buf0]() {\n"
             << "_buf0[thread_index] = training_set.inputs[thread_index]; // possible optimization by moving _buf0 pointer\n"
             << "});\n"
@@ -467,7 +658,7 @@ public:
 
         sfs << "void "
             << class_name
-            << "::Network::train(std::size_t iterations, "
+            << "::Network::train(std::size_t iterations, std::size_t mult, "
             << class_name
             << "::Dataset & dataset) {\n"
             << "train_k<"
@@ -479,7 +670,8 @@ public:
             << ", "
             << block_dim
             << ">>>(\n"
-            << "iterations,\n";
+            << "iterations,\n"
+            << "mult,\n";
         for (std::size_t i = 0; i < layers.size() + 1; i++) {
             print_buf_name(sfs, i);
             sfs << ",\n";
@@ -488,17 +680,173 @@ public:
             print_layer_alloc_name(sfs, i);
             sfs << ",\n";
         }
-        sfs << "dataset._data,\ndataset.size()\n);\ncudaDeviceSynchronize();\n}\n\n";
+        sfs << "dataset._data,\n"
+            << "dataset.size()\n"
+            << ");\n"
+            << "cudaDeviceSynchronize();\n"
+            << "}\n\n";
+
+        // evaluate_k start
+        sfs << "template<std::size_t total_threads>\n"
+            << "__global__ void evaluate_k(\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            sfs << "PKML::float_t * const _";
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size(); i++) {
+            sfs << "PKML::float_t * const _";
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "const " << class_name << "::Dataset::TrainingSet * const dataset,\n"
+            << "const std::size_t dataset_size,\n"
+            << "PKML::float_t * cost_ptr\n"
+            << ") {\n"
+            << "const std::size_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;\n"
+            << "PKML::float_t cost = 0;\n"
+            << "for (std::size_t i = 0; i < dataset_size; i++) {\n"
+            << "const " << class_name << "::Dataset::TrainingSet & training_set = dataset[i];\n"
+            << "PKML::thread_gate<total_threads, l0_size::element_product>(thread_index, [thread_index, training_set, _buf0]() {\n"
+            << "_buf0[thread_index] = training_set.inputs[thread_index]; // possible optimization by moving _buf0 pointer\n"
+            << "});\n"
+            << "__syncthreads();\n"
+            << "forward_d<total_threads>(\n"
+            << "thread_index,\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            sfs << "_";
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size() - 1; i++) {
+            sfs << "_";
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "_";
+        print_layer_alloc_name(sfs, layers.size() - 1);
+        sfs << ");\n"
+            << "PKML::thread_gate<total_threads, ";
+        print_layer_size_name(sfs, layers.size() - 1);
+        sfs << "::element_product>(thread_index, [thread_index, &cost, dataset_size, training_set, _";
+        print_buf_name(sfs, layers.size());
+        sfs << "]() {\n"
+            << "cost += (training_set.outputs[thread_index] - _";
+        print_buf_name(sfs, layers.size());
+        sfs << "[thread_index]) / dataset_size;\n"
+            << "});\n"
+            << "}\n"
+            << "*cost_ptr = cost;\n"
+            << "}\n\n";
+        // evaluate_k end
+
+        // evaluate start
+        sfs << "PKML::float_t "
+            << class_name
+            << "::Network::evaluate("
+            << class_name
+            << "::Dataset & dataset) {\n"
+            << "PKML::float_t * dev_cost;\n"
+            << "cudaMalloc((void **) &dev_cost, sizeof(PKML::float_t));\n"
+            << "evaluate_k<"
+            << grid_dim
+            << " * "
+            << block_dim
+            << "><<<"
+            << grid_dim
+            << ", "
+            << block_dim
+            << ">>>(\n";
+        for (std::size_t i = 0; i < layers.size() + 1; i++) {
+            print_buf_name(sfs, i);
+            sfs << ",\n";
+        }
+        for (std::size_t i = 0; i < layers.size(); i++) {
+            print_layer_alloc_name(sfs, i);
+            sfs << ",\n";
+        }
+        sfs << "dataset._data,\n"
+            << "dataset.size(),\n"
+            << "dev_cost\n"
+            << ");\n"
+            << "PKML::float_t cost;\n"
+            << "cudaMemcpy(&cost, dev_cost, sizeof(float), cudaMemcpyDeviceToHost);\n"
+            << "return cost;\n"
+            << "}\n\n";
+        // evaluate end
+
+        // save start
+        sfs << "void "
+            << class_name
+            << "::Network::save(const char * path) {\n"
+            << "std::ofstream fs(path);\n";
+        for (std::size_t i = 0; i < layers.size(); i++) {
+            sfs << "if constexpr (";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement != 0) {\n";
+
+            sfs << "float * temp = new float[";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement"
+                << "];\n"
+                << "cudaMemcpy(temp, ";
+            print_layer_alloc_name(sfs, i);
+            sfs << ", ";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement * sizeof(float), cudaMemcpyDeviceToHost);\n"
+                << "fs.write((const char *) temp, ";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement * sizeof(float));\n"
+                << "delete[] temp;\n";
+
+            sfs << "}\n";
+        }
+        sfs << "}\n\n";
+        // save end
+
+        // load start
+        sfs << "void "
+            << class_name
+            << "::Network::load(const char * path) {\n"
+            << "std::ifstream fs(path);\n";
+        for (std::size_t i = 0; i < layers.size(); i++) {
+            sfs << "if constexpr (";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement != 0) {\n";
+
+            sfs << "float * temp = new float[";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement"
+                << "];\n"
+                << "fs.read((char *) temp, ";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement * sizeof(float));\n";
+
+            sfs << "cudaMemcpy(";
+            print_layer_alloc_name(sfs, i);
+            sfs << ", temp, ";
+            print_layer_type(sfs, i);
+            sfs << "::memory_requirement * sizeof(float), cudaMemcpyHostToDevice);\n"
+                << "delete[] temp;\n";
+
+            sfs << "}\n";
+        }
+        sfs << "}\n\n";
+        // load end
 
         sfs << "void "
             << class_name
             << "::Network::copy_outputs(PKML::float_t * dst) {\n"
-               "cudaMemcpy(dst, output_buffer, 2 * sizeof(PKML::float_t), cudaMemcpyDeviceToHost);\n"
+               "cudaMemcpy(dst, output_buffer, ";
+        print_layer_size_name(sfs, layers.size());
+        sfs << "::element_product * sizeof(PKML::float_t), cudaMemcpyDeviceToHost);\n"
                "}\n\n";
         sfs << "void "
             << class_name
             << "::Network::copy_inputs(PKML::float_t * src) {\n"
-               "cudaMemcpy(input_buffer, src, 2 * sizeof(PKML::float_t), cudaMemcpyHostToDevice);\n"
+            << "cudaMemcpy(input_buffer, src, ";
+        print_layer_size_name(sfs, 0);
+        sfs << "::element_product * sizeof(PKML::float_t), cudaMemcpyHostToDevice);\n"
                "}\n\n";
 
         sfs << class_name << "::Dataset::Dataset(): _size(0), _capacity(1) {\n";
@@ -510,11 +858,17 @@ public:
         sfs << "void " << class_name << "::Dataset::push_back(const TrainingSet & value) {\n";
         sfs << "if (_size == _capacity) {\n";
         sfs << "_capacity *= 2;\n";
-        sfs << "TrainingSet * temp_mem;";
+        sfs << "TrainingSet * temp_mem;\n";
         sfs << "if (cudaMalloc((void **) &temp_mem, _capacity * sizeof(TrainingSet)) == cudaErrorMemoryAllocation) throw std::bad_alloc();\n";
         sfs << "cudaMemcpy(temp_mem, _data, _size * sizeof(TrainingSet), cudaMemcpyDeviceToDevice);\n";
         sfs << "cudaFree(_data);\n";
         sfs << "_data = temp_mem;\n";
-        sfs << "}\n}\n\n";
+        sfs << "}\n";
+        sfs << "cudaMemcpy(&_data[_size++], &value, sizeof(TrainingSet), cudaMemcpyHostToDevice);\n";
+        sfs << "}\n\n";
+
+        sfs << "void " << class_name << "::Dataset::pull_set(std::size_t index, TrainingSet & set) const {\n";
+        sfs << "cudaMemcpy(&set, &_data[index], sizeof(TrainingSet), cudaMemcpyDeviceToHost);\n";
+        sfs << "}\n\n";
     }
 };

@@ -34,7 +34,7 @@ struct FullyConnected {
         allocation_t & allocation = *((allocation_t *) alloc);
 
         PKML::float_t sum = 0;
-#pragma unroll 10
+//#pragma unroll
         for (std::size_t i = 0; i < input_dimension::element_product; i++) {
             sum = PKML::Math::fma(input[i], allocation.weights[thread_index][i], sum);
         }
@@ -44,7 +44,7 @@ struct FullyConnected {
     __device__ static inline void backward_gated(uint32_t thread_index, PKML::float_t * costs, PKML::float_t * input, PKML::float_t cost, PKML::float_t * alloc) {
         allocation_t & allocation = *((allocation_t *) alloc);
 
-#pragma unroll 10
+//#pragma unroll
         for (std::size_t i = 0; i < input_dimension::element_product; i++) {
             costs[i] = PKML::Math::fma(
                 cost,

@@ -31,6 +31,8 @@ namespace PKML {
         [[nodiscard]] __device__ static inline float neg(float a) noexcept { return -a; }
         [[nodiscard]] __device__ static inline float sub(float a, float b) noexcept { return a - b; }
         [[nodiscard]] __device__ static inline float exp(float a) noexcept { return std::exp(a); }
+        [[nodiscard]] __device__ static inline float tanh(float a) noexcept { return std::tanh(a); }
+        [[nodiscard]] __device__ static inline float sech(float a) noexcept { return 1.0f / std::cosh(a); }
     };
 
     using Math = _Math<PKML::float_t>;

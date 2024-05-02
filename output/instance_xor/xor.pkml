@@ -9,41 +9,30 @@
         "float_type": "float",
 
         "grid_dim": 1,
-        "block_dim": 100,
+        "block_dim": 4,
 
         "layers": [
             {
                 "module_name": "FullyConnected",
                 "input_dimension":  [ 2 ],
-                "output_dimension": [ 2 ],
-                "params": { "learning_rate": 0.1 }
+                "output_dimension": [ 4 ],
+                "params": { "learning_rate": 0.5 }
             },
             {
                 "module_name": "Sigmoid",
-                "input_dimension":  [ 2 ],
-                "output_dimension": [ 2 ]
+                "input_dimension":  [ 4 ],
+                "output_dimension": [ 4 ]
             },
             {
                 "module_name": "FullyConnected",
-                "input_dimension":  [ 2 ],
-                "output_dimension": [ 2 ],
-                "params": { "learning_rate": 0.1 }
+                "input_dimension":  [ 4 ],
+                "output_dimension": [ 1 ],
+                "params": { "learning_rate": 0.5 }
             },
             {
                 "module_name": "Sigmoid",
-                "input_dimension":  [ 2 ],
-                "output_dimension": [ 2 ]
-            },
-            {
-                "module_name": "FullyConnected",
-                "input_dimension":  [ 2 ],
-                "output_dimension": [ 2 ],
-                "params": { "learning_rate": 0.1 }
-            },
-            {
-                "module_name": "Sigmoid",
-                "input_dimension":  [ 2 ],
-                "output_dimension": [ 2 ]
+                "input_dimension":  [ 1 ],
+                "output_dimension": [ 1 ]
             }
         ]
     }

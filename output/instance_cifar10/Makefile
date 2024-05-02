@@ -3,12 +3,12 @@ no_regen:
 	scp out compute@colin.compute.srv:/srv/compute/out
 
 build:
-	../../cmake-build-debug/pkmlc xor.pkml
-	nvcc --std=c++20 output.cu main.cpp -I ../include/ -o out
+	../../cmake-build-debug/pkmlc cifar10.pkml
+	nvcc --std=c++20 output.cu main.cpp -I ../include/ -o out -O3
 	scp out compute@colin.compute.srv:/srv/compute/out
 
 build_debug:
-	../../cmake-build-debug/pkmlc xor.pkml
+	../../cmake-build-debug/pkmlc cifar10.pkml
 	nvcc --std=c++20 output.cu main.cpp -I ../include/ -o out -g -G
 	scp out compute@colin.compute.srv:/srv/compute/out
 
