@@ -2,8 +2,7 @@
     "modules": [
         "modules/fully_connected.pkmlm",
 
-        "modules/tanh.pkmlm",
-        "modules/relu.pkmlm"
+        "modules/sigmoid.pkmlm"
     ],
     "network": {
         "class_name": "InstanceCifar10",
@@ -16,44 +15,44 @@
             {
                 "module_name": "FullyConnected",
                 "input_dimension":  [ 32, 32, 3 ],
-                "output_dimension": [ 32, 32 ],
+                "output_dimension": [ 40, 40 ],
                 "params": { "learning_rate": 0.001 }
             },
             {
-                "module_name": "Tanh",
-                "input_dimension":  [ 32, 32 ],
-                "output_dimension": [ 32, 32 ]
+                "module_name": "Sigmoid",
+                "input_dimension":  [ 40, 40 ],
+                "output_dimension": [ 40, 40 ]
             },
             {
                 "module_name": "FullyConnected",
-                "input_dimension":  [ 32, 32 ],
+                "input_dimension":  [ 40, 40 ],
+                "output_dimension": [ 40, 40 ],
+                "params": { "learning_rate": 0.001 }
+            },
+            {
+                "module_name": "Sigmoid",
+                "input_dimension":  [ 40, 40 ],
+                "output_dimension": [ 40, 40 ]
+            },
+            {
+                "module_name": "FullyConnected",
+                "input_dimension":  [ 40, 40 ],
                 "output_dimension": [ 20, 20 ],
                 "params": { "learning_rate": 0.001 }
             },
             {
-                "module_name": "Tanh",
+                "module_name": "Sigmoid",
                 "input_dimension":  [ 20, 20 ],
                 "output_dimension": [ 20, 20 ]
             },
             {
                 "module_name": "FullyConnected",
                 "input_dimension":  [ 20, 20 ],
-                "output_dimension": [ 10, 10 ],
-                "params": { "learning_rate": 0.001 }
-            },
-            {
-                "module_name": "Tanh",
-                "input_dimension":  [ 10, 10 ],
-                "output_dimension": [ 10, 10 ]
-            },
-            {
-                "module_name": "FullyConnected",
-                "input_dimension":  [ 10, 10 ],
                 "output_dimension": [ 10 ],
                 "params": { "learning_rate": 0.001 }
             },
             {
-                "module_name": "Tanh",
+                "module_name": "Sigmoid",
                 "input_dimension":  [ 10 ],
                 "output_dimension": [ 10 ]
             }

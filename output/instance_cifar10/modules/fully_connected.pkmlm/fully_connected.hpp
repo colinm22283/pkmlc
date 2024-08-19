@@ -44,6 +44,8 @@ struct FullyConnected {
     __device__ static inline void backward_gated(uint32_t thread_index, PKML::float_t * costs, PKML::float_t * input, PKML::float_t cost, PKML::float_t * alloc) {
         allocation_t & allocation = *((allocation_t *) alloc);
 
+        PKML::float_t negative_learning_rate = -params.learning_rate;
+
 //#pragma unroll
         for (std::size_t i = 0; i < input_dimension::element_product; i++) {
             costs[i] = PKML::Math::fma(
@@ -53,14 +55,14 @@ struct FullyConnected {
             );
 
             allocation.weights[thread_index][i] = PKML::Math::fma(
-                -params.learning_rate,
+                negative_learning_rate,
                 PKML::Math::mul(cost, input[i]),
                 allocation.weights[thread_index][i]
             );
         }
 
         allocation.biases[thread_index] = PKML::Math::fma(
-            -params.learning_rate,
+            negative_learning_rate,
             cost,
             allocation.biases[thread_index]
         );

@@ -1,27 +1,26 @@
 #include <fstream>
 #include "output.hpp"
 #include "modules/fully_connected.pkmlm/fully_connected.hpp"
-#include "modules/tanh.pkmlm/tanh.hpp"
-#include "modules/relu.pkmlm/relu.hpp"
+#include "modules/sigmoid.pkmlm/sigmoid.hpp"
 
 using l0_size=PKML::Dimension<32,32,3>;
-using l0_1_size=PKML::Dimension<32,32>;
-using l1_2_size=PKML::Dimension<32,32>;
-using l2_3_size=PKML::Dimension<20,20>;
-using l3_4_size=PKML::Dimension<20,20>;
-using l4_5_size=PKML::Dimension<10,10>;
-using l5_6_size=PKML::Dimension<10,10>;
+using l0_1_size=PKML::Dimension<40,40>;
+using l1_2_size=PKML::Dimension<40,40>;
+using l2_3_size=PKML::Dimension<40,40>;
+using l3_4_size=PKML::Dimension<40,40>;
+using l4_5_size=PKML::Dimension<20,20>;
+using l5_6_size=PKML::Dimension<20,20>;
 using l6_7_size=PKML::Dimension<10>;
 using l7_size=PKML::Dimension<10>;
 
 using l0_t=FullyConnected<l0_size,l0_1_size,FullyConnected_params{.learning_rate=0.001,}>;
-using l1_t=Tanh<l0_1_size,l1_2_size,Tanh_params{}>;
+using l1_t=Sigmoid<l0_1_size,l1_2_size,Sigmoid_params{}>;
 using l2_t=FullyConnected<l1_2_size,l2_3_size,FullyConnected_params{.learning_rate=0.001,}>;
-using l3_t=Tanh<l2_3_size,l3_4_size,Tanh_params{}>;
+using l3_t=Sigmoid<l2_3_size,l3_4_size,Sigmoid_params{}>;
 using l4_t=FullyConnected<l3_4_size,l4_5_size,FullyConnected_params{.learning_rate=0.001,}>;
-using l5_t=Tanh<l4_5_size,l5_6_size,Tanh_params{}>;
+using l5_t=Sigmoid<l4_5_size,l5_6_size,Sigmoid_params{}>;
 using l6_t=FullyConnected<l5_6_size,l6_7_size,FullyConnected_params{.learning_rate=0.001,}>;
-using l7_t=Tanh<l6_7_size,l7_size,Tanh_params{}>;
+using l7_t=Sigmoid<l6_7_size,l7_size,Sigmoid_params{}>;
 
 PKML::float_t * buf0;
 PKML::float_t * buf0_1;
